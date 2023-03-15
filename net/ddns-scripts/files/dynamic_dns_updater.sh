@@ -40,7 +40,7 @@ Parameters:
                         '3' output to console AND logfile
                             + run once WITHOUT retry on error
                             + NOT sending update to DDNS service
-
+ -b                   Start in background while verbose mode
 EOF
 }
 
@@ -50,9 +50,10 @@ usage_err() {
 	exit 1
 }
 
-while getopts ":hv:n:S:V" OPT; do
+while getopts ":bhv:n:S:V" OPT; do
 	case "$OPT" in
 		h)	usage; exit 0;;
+		b)	BACKGROUND_VERBOSE=1;;
 		v)	VERBOSE=$OPTARG;;
 		n)	NETWORK=$OPTARG;;
 		S)	SECTION_ID=$OPTARG;;

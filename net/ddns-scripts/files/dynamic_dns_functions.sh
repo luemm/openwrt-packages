@@ -24,6 +24,7 @@
 VERSION="2.7.8-2"
 SECTION_ID=""		# hold config's section name
 VERBOSE=0		# default mode is log to console, but easily changed with parameter
+BACKGROUND_VERBOSE=0	# start in background while verbose mode
 MYPROG=$(basename $0)	# my program call name
 
 LOGFILE=""		# logfile - all files are set in dynamic_dns_updater.sh
@@ -178,8 +179,8 @@ start_daemon_for_all_ddns_sections()
 	for __SECTIONID in $__SECTIONS; do
 		config_get __IFACE "$__SECTIONID" interface "wan"
 		[ -z "$__EVENTIF" -o "$__IFACE" = "$__EVENTIF" ] || continue
-		if [ $VERBOSE -eq 0 ]; then	# start in background
-			/usr/lib/ddns/dynamic_dns_updater.sh -v 0 -S "$__SECTIONID" -- start &
+		if [ $VERBOSE -eq 0 -o $BACKGROUND_VERBOSE -ne 0 ]; then	# start in background
+			/usr/lib/ddns/dynamic_dns_updater.sh -v "$VERBOSE" -S "$__SECTIONID" -- start &
 		else
 			/usr/lib/ddns/dynamic_dns_updater.sh -v "$VERBOSE" -S "$__SECTIONID" -- start
 		fi
