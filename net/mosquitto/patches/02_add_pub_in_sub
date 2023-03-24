@@ -1,0 +1,129 @@
+Index: mosquitto-1.5.9/client/sub_client.c
+===================================================================
+--- mosquitto-1.5.9.orig/client/sub_client.c
++++ mosquitto-1.5.9/client/sub_client.c
+@@ -37,6 +37,10 @@ Contributors:
+ bool process_messages = true;
+ int msg_count = 0;
+ struct mosquitto *mosq = NULL;
++static int mid_sent = 0;
++static int last_mid = -1;
++static int last_mid_sent = -1;
++static bool connected = true;
+ 
+ #ifndef WIN32
+ void my_signal_handler(int signum)
+@@ -130,6 +134,19 @@ void my_log_callback(struct mosquitto *m
+ 	printf("%s\n", str);
+ }
+ 
++void my_publish_callback(struct mosquitto *mosq, void *obj, int mid)
++{
++	last_mid_sent = mid;
++	if(mid == last_mid){
++		printf("published\n");
++	}
++}
++
++void my_disconnect_callback(struct mosquitto *mosq, void *obj, int rc)
++{
++	connected = false;
++}
++
+ void print_usage(void)
+ {
+ 	int major, minor, revision;
+@@ -238,7 +255,18 @@ int main(int argc, char *argv[])
+ #ifndef WIN32
+ 		struct sigaction sigact;
+ #endif
+-	
++	char *buf, *buf2;
++	int buf_len = 1024;
++	int buf_len_actual;
++	int read_len;
++	int pos;
++
++	buf = malloc(buf_len);
++	if(!buf){
++		fprintf(stderr, "Error: Out of memory.\n");
++		return 1;
++	}
++
+ 	memset(&cfg, 0, sizeof(struct mosq_config));
+ 
+ 	rc = client_config_load(&cfg, CLIENT_SUB, argc, argv);
+@@ -286,6 +314,7 @@ int main(int argc, char *argv[])
+ 	}
+ 	mosquitto_connect_with_flags_callback_set(mosq, my_connect_callback);
+ 	mosquitto_message_callback_set(mosq, my_message_callback);
++	mosquitto_publish_callback_set(mosq, my_publish_callback);
+ 
+ 	rc = client_connect(mosq, &cfg);
+ 	if(rc) return rc;
+@@ -305,8 +334,64 @@ int main(int argc, char *argv[])
+ 	}
+ #endif
+ 
+-	rc = mosquitto_loop_forever(mosq, -1, 1);
++	mosquitto_loop_start(mosq);
++
++	do {
++		pos = 0;
++		read_len = buf_len;
++		while(fgets(&buf[pos], read_len, stdin)){
++			buf_len_actual = strlen(buf);
++			if(buf[buf_len_actual-1] == '\n'){
++				char *topic, *token;
++				int qos,retain;
++				rc =  MOSQ_ERR_INVAL;
++				topic = strtok(buf,":");
++				token = strtok(NULL,":");
++				if(!token)
++					goto pub_err;
++				qos = atoi(token);
++				token = strtok(NULL,":");
++				if(!token)
++					goto pub_err;
++				retain = atoi(token);
++				buf[buf_len_actual-1] = '\0';
++				buf += strlen(topic)+5;
++				buf_len_actual -= strlen(topic)-5;
++				rc = mosquitto_publish(mosq, &mid_sent, topic, buf_len_actual-1, buf, qos, retain);
++pub_err:
++				if(rc){
++					fprintf(stderr, "Error: Publish returned %d\n", rc);
++				}
++				break;
++			}else{
++				buf_len += 1024;
++				pos += 1023;
++				read_len = 1024;
++				buf2 = realloc(buf, buf_len);
++				if(!buf2){
++					free(buf);
++					fprintf(stderr, "Publish Error: Out of memory.\n");
++					buf = malloc(buf_len);
++					if(!buf){
++						fprintf(stderr, "Error: Out of memory.\n");
++						return 1;
++					}
++				}
++				buf = buf2;
++			}
++		}
++
++		if(feof(stdin) && (last_mid != -1))
++				last_mid = mid_sent;
++
++		struct timespec ts;
++		ts.tv_sec = 0;
++		ts.tv_nsec = 100000000;
++		nanosleep(&ts, NULL);
++
++	} while(connected);
+ 
++	mosquitto_loop_stop(mosq, false);
+ 	mosquitto_destroy(mosq);
+ 	mosquitto_lib_cleanup();
+ 
